@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>生鲜优选</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* 自定义滚动条隐藏 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* 左侧导航激活状态指示条动画 */
+        .nav-item.active {
+            background-color: #fff;
+            color: #10b981; /* emerald-500 */
+            font-weight: 700;
+            position: relative;
+        }
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 60%;
+            background-color: #10b981;
+            border-radius: 0 4px 4px 0;
+            animation: slideIn 0.2s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { height: 0; opacity: 0; }
+            to { height: 60%; opacity: 1; }
+        }
+
+        /* 购物车动画 */
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .animate-pop {
+            animation: pop 0.2s ease-in-out;
+        }
+
+        /* 搜索高亮动画 */
+        @keyframes highlight {
+            0% { background-color: rgba(16, 185, 129, 0.2); }
+            100% { background-color: transparent; }
+        }
+        .search-highlight {
+            animation: highlight 1s ease-out;
+        }
+
+        /* 清除按钮显示/隐藏 */
+        .clear-btn {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .clear-btn.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* 详情页滑入动画 */
+        .detail-slide-in {
+            animation: slideInRight 0.3s ease-out;
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+
+        /* 图片预览指示器 */
+        .img-indicator {
+            transition: all 0.3s;
+        }
+        .img-indicator.active {
+            width: 20px;
+            background-color: #10b981;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen flex flex-col overflow-hidden font-sans">
+
+    <!-- 顶部搜索栏 (固定) -->
+    <header class="bg-white shadow-sm z-20 flex-none px-4 py-3 flex items-center space-x-3" id="main-header">
+        <div class="flex-1 relative">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            <input 
+                type="text" 
+                id="search-input"
+                placeholder="搜索商品名称..." 
+                class="w-full bg-gray-100 text-sm rounded-full py-2.5 pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                autocomplete="off"
+            >
+            <button 
+                id="clear-search" 
+                class="clear-btn absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 w-6 h-6 flex items-center justify-center"
+                onclick="clearSearch()"
+            >
+                <i class="fas fa-times-circle"></i>
+            </button>
+        </div>
+        <button class="text-gray-600 relative flex-shrink-0">
+            <i class="fas fa-bell text-xl"></i>
+            <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">3</span>
+        </button>
+    </header>
+
+    <!-- 搜索状态提示栏 (动态显示) -->
+    <div id="search-status" class="hidden bg-emerald-50 px-4 py-2 text-xs text-emerald-700 flex items-center justify-between flex-none border-b border-emerald-100">
+        <span id="search-status-text"></span>
+        <button onclick="clearSearch()" class="text-emerald-600 font-medium hover:text-emerald-800">清除搜索</button>
+    </div>
+
+    <!-- 主体内容区域 -->
+    <div class="flex flex-1 overflow-hidden relative" id="main-container">
+        
+        <!-- 左侧分类导航 -->
+        <nav class="w-24 bg-gray-100 flex-none overflow-y-auto no-scrollbar pb-20" id="category-nav">
+            <!-- 动态生成分类 -->
+        </nav>
+
+        <!-- 右侧商品展示 -->
+        <main class="flex-1 overflow-y-auto bg-white relative" id="product-container">
+            <!-- 动态生成商品 -->
+            <div class="p-3 pb-24" id="product-list">
+                <!-- 内容将通过JS填充 -->
+            </div>
+            
+            <!-- 空状态提示 -->
+            <div id="empty-state" class="hidden flex-col items-center justify-center h-full text-gray-400 mt-20">
+                <i class="fas fa-search text-5xl mb-4 text-gray-300"></i>
+                <p class="text-sm">未找到相关商品</p>
+                <p class="text-xs mt-1 text-gray-300">换个关键词试试</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- 商品详情页 (全屏覆盖) -->
+    <div id="product-detail" class="fixed inset-0 bg-white z-50 transform translate-x-full transition-transform duration-300 flex flex-col">
+        <!-- 详情页头部 -->
+        <div class="flex items-center justify-between px-4 py-3 bg-white shadow-sm z-10">
+            <button onclick="closeDetail()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                <i class="fas fa-arrow-left text-gray-700 text-lg"></i>
+            </button>
+            <h2 class="font-bold text-lg text-gray-800">商品详情</h2>
+            <button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                <i class="fas fa-share-alt text-gray-700 text-lg"></i>
+            </button>
+        </div>
+
+        <!-- 详情页内容区 -->
+        <div class="flex-1 overflow-y-auto no-scrollbar">
+            <!-- 图片展示区 -->
+            <div class="relative w-full bg-gray-100">
+                <div class="aspect-square overflow-hidden" id="detail-image-container">
+                    <img id="detail-image" src="" alt="" class="w-full h-full object-cover">
+                </div>
+                <!-- 图片指示器 -->
+                <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2" id="image-indicators">
+                    <div class="w-2 h-2 rounded-full bg-white opacity-50 img-indicator active"></div>
+                    <div class="w-2 h-2 rounded-full bg-white opacity-50 img-indicator"></div>
+                    <div class="w-2 h-2 rounded-full bg-white opacity-50 img-indicator"></div>
+                </div>
+                <!-- 商品标签 -->
+                <div class="absolute top-4 left-4 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                    热销
+                </div>
+            </div>
+
+            <!-- 商品信息区 -->
+            <div class="p-4">
+                <!-- 价格和标题 -->
+                <div class="mb-4">
+                    <div class="flex items-baseline mb-2">
+                        <span class="text-sm text-red-500 font-bold">¥</span>
+                        <span class="text-3xl text-red-500 font-bold" id="detail-price">0.00</span>
+                        <span class="text-sm text-gray-400 ml-1" id="detail-unit">/份</span>
+                    </div>
+                    <h1 class="text-xl font-bold text-gray-900 mb-2 leading-tight" id="detail-name">商品名称</h1>
+                    <p class="text-sm text-gray-500 leading-relaxed" id="detail-desc">商品描述</p>
+                </div>
+
+                <!-- 规格选择 -->
+                <div class="border-t border-gray-100 py-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-3">规格</h3>
+                    <div class="flex flex-wrap gap-2" id="specs-container">
+                        <button class="px-4 py-2 border-2 border-emerald-500 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium">
+                            默认规格
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 商品详情图 -->
+                <div class="border-t border-gray-100 py-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-3">商品详情</h3>
+                    <div class="space-y-2" id="detail-images">
+                        <!-- 详情图将通过JS填充 -->
+                    </div>
+                </div>
+
+                <!-- 底部占位 -->
+                <div class="h-20"></div>
+            </div>
+        </div>
+
+        <!-- 详情页底部操作栏 -->
+        <div class="absolute bottom-0 left-0 w-full bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <div class="text-center">
+                    <i class="fas fa-store text-gray-400 text-lg"></i>
+                    <p class="text-xs text-gray-500 mt-1">店铺</p>
+                </div>
+                <div class="text-center">
+                    <i class="fas fa-comment-dots text-gray-400 text-lg"></i>
+                    <p class="text-xs text-gray-500 mt-1">客服</p>
+                </div>
+                <div class="text-center relative">
+                    <i class="fas fa-shopping-cart text-gray-400 text-lg"></i>
+                    <p class="text-xs text-gray-500 mt-1">购物车</p>
+                    <span id="detail-cart-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center hidden">0</span>
+                </div>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="addToCartFromDetail()" class="bg-emerald-100 text-emerald-700 px-6 py-2.5 rounded-full font-bold text-sm">
+                    加入购物车
+                </button>
+                <button class="bg-emerald-500 text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-md">
+                    立即购买
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部购物车栏 (固定悬浮) -->
+    <div class="absolute bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-30 px-4 py-2 flex items-center justify-between" id="cart-bar">
+        <div class="relative -mt-8" id="cart-icon-container">
+            <div class="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shadow-lg border-4 border-white relative cursor-pointer transition-transform active:scale-95">
+                <i class="fas fa-shopping-cart text-white text-xl"></i>
+                <span id="cart-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center transform scale-0 transition-transform duration-200">0</span>
+            </div>
+            <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-bold text-gray-900 whitespace-nowrap">
+                ¥<span id="total-price">0.00</span>
+            </div>
+        </div>
+        <div class="flex-1 pl-4">
+            <p class="text-xs text-gray-500">另需配送费 ¥5</p>
+        </div>
+        <button class="bg-emerald-500 text-white px-6 py-2 rounded-full font-bold shadow-md active:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" id="checkout-btn" disabled>
+            去结算
+        </button>
+    </div>
+
+    <!-- JavaScript 逻辑 -->
+    <script>
+        // 模拟数据
+        const categories = [
+            { id: 'hot', name: '热销推荐', icon: 'fa-fire' },
+            { id: 'fruit', name: '新鲜水果', icon: 'fa-apple-alt' },
+            { id: 'veg', name: '蔬菜豆菇', icon: 'fa-carrot' },
+            { id: 'meat', name: '肉禽蛋品', icon: 'fa-drumstick-bite' },
+            { id: 'seafood', name: '海鲜水产', icon: 'fa-fish' },
+            { id: 'dairy', name: '乳品烘焙', icon: 'fa-cheese' },
+            { id: 'drink', name: '酒水饮料', icon: 'fa-wine-bottle' },
+            { id: 'snack', name: '休闲零食', icon: 'fa-cookie-bite' },
+            { id: 'daily', name: '日用百货', icon: 'fa-soap' }
+        ];
+
+        const productsData = {
+            'hot': [
+                { id: 101, name: '进口车厘子 JJJ级', desc: '果径30-32mm 鲜甜爆汁', price: 59.9, unit: '500g', img: 'https://images.unsplash.com/photo-1528821128474-27f963b062bf?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1528821128474-27f963b062bf?w=600&q=80', 'https://images.unsplash.com/photo-1528821154947-1aa3d1b74941?w=600&q=80', 'https://images.unsplash.com/photo-1528821128474-27f963b062bf?w=600&q=80'] },
+                { id: 102, name: '红颜草莓', desc: '丹东99草莓 现摘现发', price: 35.8, unit: '300g', img: 'https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=600&q=80', 'https://images.unsplash.com/photo-1587393855524-087f83d95bc9?w=600&q=80'] },
+                { id: 103, name: '澳洲牛排', desc: 'M3西冷牛排 原切无拼接', price: 128.0, unit: '2片装', img: 'https://images.unsplash.com/photo-1600891964092-4316c288032e?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1600891964092-4316c288032e?w=600&q=80', 'https://images.unsplash.com/photo-1546833998-877b37c2e5c6?w=600&q=80'] },
+                { id: 104, name: '阳光玫瑰葡萄', desc: '脆甜无籽 带有玫瑰香', price: 29.9, unit: '500g', img: 'https://images.unsplash.com/photo-1596363505729-4190a9506133?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1596363505729-4190a9506133?w=600&q=80'] }
+            ],
+            'fruit': [
+                { id: 201, name: '泰国金枕榴莲', desc: 'A级果 保4房肉', price: 189.0, unit: '个(约5斤)', img: 'https://images.unsplash.com/photo-1587387119725-9d6bac0f22fb?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1587387119725-9d6bac0f22fb?w=600&q=80', 'https://images.unsplash.com/photo-1591365320389-580282d948aa?w=600&q=80'] },
+                { id: 202, name: '赣南脐橙', desc: '当季鲜橙 维C满满', price: 9.9, unit: '500g', img: 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=600&q=80'] },
+                { id: 203, name: '麒麟西瓜', desc: '皮薄肉脆 中心糖度13+', price: 19.9, unit: '个(约6斤)', img: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=600&q=80'] },
+                { id: 204, name: '佳沛金果', desc: '新西兰进口 维C之王', price: 49.9, unit: '6个装', img: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=600&q=80'] },
+                { id: 205, name: '云南蓝莓', desc: '大果18mm+ 酸甜适口', price: 15.9, unit: '125g', img: 'https://images.unsplash.com/photo-1498557850523-fd3d118b962e?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1498557850523-fd3d118b962e?w=600&q=80'] }
+            ],
+            'veg': [
+                { id: 301, name: '有机菠菜', desc: '农场直供 鲜嫩无泥沙', price: 6.8, unit: '300g', img: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=600&q=80'] },
+                { id: 302, name: '荷兰土豆', desc: '黄心土豆 软糯香甜', price: 3.9, unit: '500g', img: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=600&q=80'] },
+                { id: 303, name: '西兰花', desc: '紧实花球 营养丰富', price: 5.5, unit: '颗', img: 'https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=600&q=80'] },
+                { id: 304, name: '水果玉米', desc: '生熟两吃 爆浆甜脆', price: 4.5, unit: '根', img: 'https://images.unsplash.com/photo-1551754655-cd27e38d2076?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1551754655-cd27e38d2076?w=600&q=80'] }
+            ],
+            'meat': [
+                { id: 401, name: '五花肉', desc: '肥瘦相间 层次分明', price: 28.8, unit: '500g', img: 'https://images.unsplash.com/photo-1602470520998-f4a52199a3d6?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1602470520998-f4a52199a3d6?w=600&q=80'] },
+                { id: 402, name: '鸡翅中', desc: '肉质鲜嫩 无激素', price: 32.5, unit: '500g', img: 'https://images.unsplash.com/photo-1527477396000-64ca9c11ae1d?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1527477396000-64ca9c11ae1d?w=600&q=80'] },
+                { id: 403, name: '土鸡蛋', desc: '林间散养 蛋黄橙黄', price: 19.9, unit: '15枚', img: 'https://images.unsplash.com/photo-1506976785307-8732e854ad03?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1506976785307-8732e854ad03?w=600&q=80'] }
+            ],
+            'seafood': [
+                { id: 501, name: '基围虾', desc: '鲜活速冻 壳薄肉满', price: 45.0, unit: '500g', img: 'https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=600&q=80'] },
+                { id: 502, name: '三文鱼刺身', desc: '挪威进口 肥美嫩滑', price: 68.0, unit: '200g', img: 'https://images.unsplash.com/photo-1599084993091-1cb5c0721cc6?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1599084993091-1cb5c0721cc6?w=600&q=80'] }
+            ],
+            'dairy': [
+                { id: 601, name: '全脂鲜牛奶', desc: '巴氏杀菌 3.6g乳蛋白', price: 12.9, unit: '1L', img: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1563636619-e9143da7973b?w=600&q=80'] },
+                { id: 602, name: '全麦吐司', desc: '现烤现卖 麦香浓郁', price: 15.8, unit: '袋', img: 'https://images.unsplash.com/photo-1598373182133-52452f7691ef?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1598373182133-52452f7691ef?w=600&q=80'] }
+            ],
+            'drink': [
+                { id: 701, name: '精酿啤酒', desc: '德式小麦 口感醇厚', price: 9.9, unit: '瓶', img: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1608270586620-248524c67de9?w=600&q=80'] },
+                { id: 702, name: 'NFC橙汁', desc: '非浓缩还原 鲜榨口感', price: 8.5, unit: '瓶', img: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1613478223719-2ab802602423?w=600&q=80'] }
+            ],
+            'snack': [
+                { id: 801, name: '每日坚果', desc: '7种搭配 科学配比', price: 4.9, unit: '包', img: 'https://images.unsplash.com/photo-1536591375315-196000ea3646?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1536591375315-196000ea3646?w=600&q=80'] },
+                { id: 802, name: '黑巧克力', desc: '85%可可含量 苦甜平衡', price: 29.9, unit: '盒', img: 'https://images.unsplash.com/photo-1511381939415-e44015466834?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1511381939415-e44015466834?w=600&q=80'] }
+            ],
+            'daily': [
+                { id: 901, name: '抽取式面巾纸', desc: '4层加厚 湿水不破', price: 12.9, unit: '提', img: 'https://images.unsplash.com/photo-1583947581924-860bda6a26df?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1583947581924-860bda6a26df?w=600&q=80'] },
+                { id: 902, name: '洗衣液', desc: '深层洁净 持久留香', price: 39.9, unit: '瓶', img: 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=400&q=80', detailImgs: ['https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=600&q=80'] }
+            ]
+        };
+
+        // 状态管理
+        let state = {
+            currentCategory: 'hot',
+            cart: {}, // { productId: count }
+            searchQuery: '',
+            isSearching: false,
+            currentProduct: null // 当前查看的商品
+        };
+
+        // DOM 元素
+        const navEl = document.getElementById('category-nav');
+        const productListEl = document.getElementById('product-list');
+        const cartBadgeEl = document.getElementById('cart-badge');
+        const totalPriceEl = document.getElementById('total-price');
+        const checkoutBtn = document.getElementById('checkout-btn');
+        const searchInput = document.getElementById('search-input');
+        const clearBtn = document.getElementById('clear-search');
+        const searchStatus = document.getElementById('search-status');
+        const searchStatusText = document.getElementById('search-status-text');
+        const emptyState = document.getElementById('empty-state');
+        const productDetail = document.getElementById('product-detail');
+        const detailCartBadge = document.getElementById('detail-cart-badge');
+
+        // 初始化
+        function init() {
+            renderNav();
+            renderProducts('hot');
+            setupSearch();
+        }
+
+        // 设置搜索功能
+        function setupSearch() {
+            // 输入事件监听（防抖）
+            let debounceTimer;
+            searchInput.addEventListener('input', (e) => {
+                const value = e.target.value.trim();
+                
+                // 控制清除按钮显示
+                if (value.length > 0) {
+                    clearBtn.classList.add('visible');
+                } else {
+                    clearBtn.classList.remove('visible');
+                }
+
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    performSearch(value);
+                }, 300); // 300ms 防抖
+            });
+
+            // 聚焦时如果有关键词，保持搜索状态
+            searchInput.addEventListener('focus', () => {
+                if (state.searchQuery) {
+                    searchInput.value = state.searchQuery;
+                }
+            });
+        }
+
+        // 执行搜索
+        function performSearch(query) {
+            state.searchQuery = query;
+            
+            if (query.length === 0) {
+                // 清空搜索，返回当前分类
+                state.isSearching = false;
+                searchStatus.classList.add('hidden');
+                emptyState.classList.add('hidden');
+                productListEl.classList.remove('hidden');
+                renderProducts(state.currentCategory);
+                return;
+            }
+
+            state.isSearching = true;
+            
+            // 在所有分类中搜索
+            const allProducts = [];
+            for (const catId in productsData) {
+                const catProducts = productsData[catId].map(p => ({
+                    ...p,
+                    categoryId: catId,
+                    categoryName: categories.find(c => c.id === catId)?.name || ''
+                }));
+                allProducts.push(...catProducts);
+            }
+
+            // 模糊匹配：名称、描述、分类名
+            const results = allProducts.filter(product => {
+                const searchLower = query.toLowerCase();
+                const nameMatch = product.name.toLowerCase().includes(searchLower);
+                const descMatch = product.desc.toLowerCase().includes(searchLower);
+                const catMatch = product.categoryName.toLowerCase().includes(searchLower);
+                return nameMatch || descMatch || catMatch;
+            });
+
+            // 显示搜索结果状态
+            searchStatus.classList.remove('hidden');
+            searchStatusText.textContent = `"${query}" 的搜索结果 (${results.length})`;
+
+            // 渲染结果
+            if (results.length === 0) {
+                productListEl.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                productListEl.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+                renderSearchResults(results, query);
+            }
+
+            // 搜索时隐藏左侧导航高亮（因为显示的是跨分类结果）
+            updateNavForSearch(true);
+        }
+
+        // 渲染搜索结果
+        function renderSearchResults(products, query) {
+            // 高亮匹配文本的函数
+            const highlightText = (text, query) => {
+                if (!query) return text;
+                const regex = new RegExp(`(${query})`, 'gi');
+                return text.replace(regex, '<span class="text-emerald-600 bg-emerald-50 font-bold">$1</span>');
+            };
+
+            productListEl.innerHTML = `
+                <div class="mb-2 flex items-center justify-between">
+                    <h2 class="font-bold text-lg text-gray-800">搜索结果</h2>
+                    <span class="text-xs text-gray-500">找到 ${products.length} 个商品</span>
+                </div>
+                <div class="grid grid-cols-1 gap-4">
+                    ${products.map(p => createProductCard(p, true, query)).join('')}
+                </div>
+            `;
+        }
+
+        // 清空搜索
+        window.clearSearch = function() {
+            searchInput.value = '';
+            clearBtn.classList.remove('visible');
+            searchInput.blur();
+            performSearch('');
+        };
+
+        // 渲染左侧导航
+        function renderNav() {
+            navEl.innerHTML = categories.map(cat => `
+                <div 
+                    class="nav-item py-4 px-2 text-center text-xs text-gray-600 cursor-pointer transition-colors duration-200 ${cat.id === state.currentCategory ? 'active' : 'hover:bg-gray-200'}"
+                    onclick="switchCategory('${cat.id}')"
+                    data-cat-id="${cat.id}"
+                >
+                    <div class="mb-1 text-lg"><i class="fas ${cat.icon}"></i></div>
+                    ${cat.name}
+                </div>
+            `).join('');
+        }
+
+        // 更新导航状态（搜索时取消高亮）
+        function updateNavForSearch(isSearching) {
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => {
+                if (isSearching) {
+                    item.classList.remove('active');
+                    item.classList.add('opacity-50');
+                } else {
+                    item.classList.remove('opacity-50');
+                    if (item.dataset.catId === state.currentCategory) {
+                        item.classList.add('active');
+                    }
+                }
+            });
+        }
+
+        // 切换分类
+        window.switchCategory = function(catId) {
+            // 如果正在搜索，先清除搜索
+            if (state.isSearching) {
+                clearSearch();
+            }
+            
+            if (state.currentCategory === catId) return;
+            
+            state.currentCategory = catId;
+            
+            // 更新导航样式
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => {
+                if (item.dataset.catId === catId) {
+                    item.classList.add('active');
+                    item.classList.remove('hover:bg-gray-200', 'opacity-50');
+                } else {
+                    item.classList.remove('active');
+                    item.classList.add('hover:bg-gray-200');
+                }
+            });
+
+            // 重新渲染商品
+            renderProducts(catId);
+        };
+
+        // 渲染商品列表
+        function renderProducts(catId) {
+            // 简单的加载动画效果
+            productListEl.innerHTML = '<div class="grid grid-cols-1 gap-4 animate-pulse"><div class="h-32 bg-gray-200 rounded-lg"></div><div class="h-32 bg-gray-200 rounded-lg"></div></div>';
+            
+            // 模拟网络延迟
+            setTimeout(() => {
+                const products = productsData[catId] || [];
+                
+                if (products.length === 0) {
+                    productListEl.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-64 text-gray-400">
+                            <i class="fas fa-box-open text-4xl mb-2"></i>
+                            <p>暂无商品</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                productListEl.innerHTML = `
+                    <div class="mb-2">
+                        <h2 class="font-bold text-lg text-gray-800 flex items-center">
+                            ${categories.find(c => c.id === catId).name}
+                            <span class="text-xs font-normal text-gray-400 ml-2">精选${products.length}款好物</span>
+                        </h2>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4">
+                        ${products.map(p => createProductCard(p)).join('')}
+                    </div>
+                `;
+            }, 150);
+        }
+
+        // 创建商品卡片 HTML
+        function createProductCard(product, isSearchResult = false, query = '') {
+            const count = state.cart[product.id] || 0;
+            
+            // 如果是搜索结果，高亮匹配文本
+            let displayName = product.name;
+            let displayDesc = product.desc;
+            
+            if (isSearchResult && query) {
+                const regex = new RegExp(`(${query})`, 'gi');
+                displayName = product.name.replace(regex, '<span class="text-emerald-600 bg-emerald-50 px-0.5 rounded">$1</span>');
+                displayDesc = product.desc.replace(regex, '<span class="text-emerald-600 bg-emerald-50 px-0.5 rounded">$1</span>');
+            }
+
+            // 分类标签（仅在搜索结果中显示）
+            const categoryTag = isSearchResult ? `
+                <span class="inline-block text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full mb-1">
+                    ${product.categoryName || categories.find(c => c.id === state.currentCategory)?.name}
+                </span>
+            ` : '';
+
+            return `
+                <div class="flex bg-white rounded-xl p-2 shadow-sm border border-gray-100 relative overflow-hidden group search-highlight cursor-pointer" onclick="openDetail(${product.id})">
+                    <div class="w-28 h-28 flex-none rounded-lg overflow-hidden bg-gray-100 relative">
+                        <img src="${product.img}" alt="${product.name}" class="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500">
+                    </div>
+                    <div class="flex-1 ml-3 flex flex-col justify-between py-1">
+                        <div>
+                            ${categoryTag}
+                            <h3 class="font-bold text-gray-800 text-base leading-tight mb-1">${displayName}</h3>
+                            <p class="text-xs text-gray-500 line-clamp-1 mb-2">${displayDesc}</p>
+                        </div>
+                        <div class="flex items-end justify-between">
+                            <div class="flex items-baseline">
+                                <span class="text-xs text-red-500 font-bold">¥</span>
+                                <span class="text-xl text-red-500 font-bold">${product.price.toFixed(1)}</span>
+                                <span class="text-xs text-gray-400 ml-1">/${product.unit}</span>
+                            </div>
+                            
+                            <!-- 加减按钮区域 (阻止冒泡) -->
+                            <div class="flex items-center" onclick="event.stopPropagation()">
+                                ${count > 0 ? `
+                                    <button onclick="updateCart(${product.id}, -1)" class="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center text-gray-500 active:bg-gray-100">
+                                        <i class="fas fa-minus text-xs"></i>
+                                    </button>
+                                    <span class="mx-2 text-sm font-medium w-4 text-center">${count}</span>
+                                ` : ''}
+                                <button onclick="updateCart(${product.id}, 1)" class="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md active:scale-90 transition-transform">
+                                    <i class="fas fa-plus text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 打开商品详情页
+        window.openDetail = function(productId) {
+            // 查找商品
+            let product = null;
+            for (const catId in productsData) {
+                const found = productsData[catId].find(p => p.id === productId);
+                if (found) {
+                    product = found;
+                    break;
+                }
+            }
+
+            if (!product) return;
+
+            state.currentProduct = product;
+
+            // 填充详情数据
+            document.getElementById('detail-image').src = product.img;
+            document.getElementById('detail-name').textContent = product.name;
+            document.getElementById('detail-desc').textContent = product.desc;
+            document.getElementById('detail-price').textContent = product.price.toFixed(1);
+            document.getElementById('detail-unit').textContent = '/' + product.unit;
+
+            // 填充详情图
+            const detailImagesContainer = document.getElementById('detail-images');
+            detailImagesContainer.innerHTML = product.detailImgs.map((img, index) => `
+                <img src="${img}" alt="详情图${index + 1}" class="w-full rounded-lg">
+            `).join('');
+
+            // 更新购物车角标
+            updateDetailCartBadge();
+
+            // 显示详情页
+            productDetail.classList.remove('translate-x-full');
+            productDetail.classList.add('detail-slide-in');
+        };
+
+        // 关闭商品详情页
+        window.closeDetail = function() {
+            productDetail.classList.add('translate-x-full');
+            productDetail.classList.remove('detail-slide-in');
+            state.currentProduct = null;
+        };
+
+        // 从详情页加入购物车
+        window.addToCartFromDetail = function() {
+            if (!state.currentProduct) return;
+            
+            updateCart(state.currentProduct.id, 1);
+            
+            // 显示提示
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '已添加';
+            btn.classList.add('bg-emerald-200');
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.remove('bg-emerald-200');
+            }, 1000);
+        };
+
+        // 更新详情页购物车角标
+        function updateDetailCartBadge() {
+            const totalCount = Object.values(state.cart).reduce((a, b) => a + b, 0);
+            if (totalCount > 0) {
+                detailCartBadge.textContent = totalCount;
+                detailCartBadge.classList.remove('hidden');
+            } else {
+                detailCartBadge.classList.add('hidden');
+            }
+        }
+
+        // 更新购物车
+        window.updateCart = function(productId, change) {
+            const currentCount = state.cart[productId] || 0;
+            const newCount = currentCount + change;
+
+            if (newCount <= 0) {
+                delete state.cart[productId];
+            } else {
+                state.cart[productId] = newCount;
+            }
+
+            // 重新渲染当前视图
+            if (state.isSearching) {
+                performSearch(state.searchQuery);
+            } else {
+                renderProducts(state.currentCategory);
+            }
+            updateCartSummary();
+            
+            // 如果在详情页，更新详情页的购物车角标
+            if (state.currentProduct) {
+                updateDetailCartBadge();
+            }
+        };
+
+        // 更新购物车底部栏
+        function updateCartSummary() {
+            const totalCount = Object.values(state.cart).reduce((a, b) => a + b, 0);
+            const totalPrice = Object.entries(state.cart).reduce((sum, [id, count]) => {
+                // 查找商品价格
+                let price = 0;
+                for (const cat in productsData) {
+                    const p = productsData[cat].find(item => item.id == id);
+                    if (p) {
+                        price = p.price;
+                        break;
+                    }
+                }
+                return sum + (price * count);
+            }, 0);
+
+            // 更新徽章
+            cartBadgeEl.innerText = totalCount;
+            if (totalCount > 0) {
+                cartBadgeEl.classList.remove('scale-0');
+                cartBadgeEl.classList.add('scale-100', 'animate-pop');
+                setTimeout(() => cartBadgeEl.classList.remove('animate-pop'), 200);
+                checkoutBtn.disabled = false;
+                checkoutBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                cartBadgeEl.classList.remove('scale-100');
+                cartBadgeEl.classList.add('scale-0');
+                checkoutBtn.disabled = true;
+                checkoutBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            // 更新总价
+            totalPriceEl.innerText = totalPrice.toFixed(2);
+        }
+
+        // 启动应用
+        init();
+
+    </script>
+</body>
+</html>
