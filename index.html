@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>伴手礼展示</title>
+    <!-- <script src="https://cdn.tailwindcss.com"></script> -->
+    <script src="assets/js/tailwindcss.js"></script>
+    <!-- <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"> -->
+    <link href="assets/css/taiwindcss.css" rel="stylesheet">
+    <style>
+        /* 自定义滚动条隐藏 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* 左侧导航激活状态指示条动画 */
+        .nav-item.active {
+            background-color: #fff;
+            color: #10b981; /* emerald-500 */
+            font-weight: 700;
+            position: relative;
+        }
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 60%;
+            background-color: #10b981;
+            border-radius: 0 4px 4px 0;
+            animation: slideIn 0.2s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { height: 0; opacity: 0; }
+            to { height: 60%; opacity: 1; }
+        }
+
+        /* 购物车动画 */
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .animate-pop {
+            animation: pop 0.2s ease-in-out;
+        }
+
+        /* 搜索高亮动画 */
+        @keyframes highlight {
+            0% { background-color: rgba(16, 185, 129, 0.2); }
+            100% { background-color: transparent; }
+        }
+        .search-highlight {
+            animation: highlight 1s ease-out;
+        }
+
+        /* 清除按钮显示/隐藏 */
+        .clear-btn {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .clear-btn.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* 详情页滑入动画 */
+        .detail-slide-in {
+            animation: slideInRight 0.3s ease-out;
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+
+        /* 图片预览指示器 */
+        .img-indicator {
+            transition: all 0.3s;
+        }
+        .img-indicator.active {
+            width: 20px;
+            background-color: #10b981;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen flex flex-col overflow-hidden font-sans">
+
+    <!-- 顶部搜索栏 (固定) -->
+    <header class="bg-white shadow-sm z-20 flex-none px-4 py-3 flex items-center space-x-3" id="main-header">
+        <div class="flex-1 relative">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            <input 
+                type="text" 
+                id="search-input"
+                placeholder="搜索商品名称..." 
+                class="w-full bg-gray-100 text-sm rounded-full py-2.5 pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                autocomplete="off"
+            >
+            <button 
+                id="clear-search" 
+                class="clear-btn absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 w-6 h-6 flex items-center justify-center"
+                onclick="clearSearch()"
+            >
+                <i class="fas fa-times-circle"></i>
+            </button>
+        </div>
+        <button class="text-gray-600 relative flex-shrink-0">
+            <i class="fas fa-bell text-xl"></i>
+        </button>
+    </header>
+
+    <!-- 搜索状态提示栏 (动态显示) -->
+    <div id="search-status" class="hidden bg-emerald-50 px-4 py-2 text-xs text-emerald-700 flex items-center justify-between flex-none border-b border-emerald-100">
+        <span id="search-status-text"></span>
+        <button onclick="clearSearch()" class="text-emerald-600 font-medium hover:text-emerald-800">清除搜索</button>
+    </div>
+
+    <!-- 主体内容区域 -->
+    <div class="flex flex-1 overflow-hidden relative" id="main-container">
+        
+        <!-- 左侧分类导航 -->
+        <nav style="width: 5rem" class="w-24 bg-gray-100 flex-none overflow-y-auto no-scrollbar pb-20" id="category-nav">
+            <!-- 动态生成分类 -->
+        </nav>
+
+        <!-- 右侧商品展示 -->
+        <main class="flex-1 overflow-y-auto bg-white relative" id="product-container">
+            <!-- 动态生成商品 -->
+            <div class="p-3 pb-24" id="product-list">
+                <!-- 内容将通过JS填充 -->
+            </div>
+            
+            <!-- 空状态提示 -->
+            <div id="empty-state" class="hidden flex-col items-center justify-center h-full text-gray-400 mt-20">
+                <i class="fas fa-search text-5xl mb-4 text-gray-300"></i>
+                <p class="text-sm">未找到相关商品</p>
+                <p class="text-xs mt-1 text-gray-300">换个关键词试试</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- 商品详情页 (全屏覆盖) -->
+    <div id="product-detail" class="fixed inset-0 bg-white z-50 transform translate-x-full transition-transform duration-300 flex flex-col">
+        <!-- 详情页头部 -->
+        <div class="flex items-center justify-between px-4 py-3 bg-white shadow-sm z-10">
+            <button onclick="closeDetail()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                <i class="fas fa-arrow-left text-gray-700 text-lg"></i>
+            </button>
+            <h2 class="font-bold text-lg text-gray-800">商品详情</h2>
+            <button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                <i class="fas fa-share-alt text-gray-700 text-lg"></i>
+            </button>
+        </div>
+
+        <!-- 详情页内容区 -->
+        <div class="flex-1 overflow-y-auto no-scrollbar">
+            <!-- 图片展示区 -->
+            <div class="relative w-full bg-gray-100">
+                <div class="aspect-square overflow-hidden" id="detail-image-container">
+                    <img id="detail-image" src="" alt="" class="w-full h-full object-cover">
+                </div>
+                <!-- 图片指示器 -->
+                <!-- <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2" id="image-indicators">
+                    <div class="w-2 h-2 rounded-full bg-white opacity-50 img-indicator active"></div>
+                    <div class="w-2 h-2 rounded-full bg-white opacity-50 img-indicator"></div>
+                    <div class="w-2 h-2 rounded-full bg-white opacity-50 img-indicator"></div>
+                </div> -->
+                <!-- 商品标签 -->
+                <div class="absolute top-4 left-4 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                    热销
+                </div>
+            </div>
+
+            <!-- 商品信息区 -->
+            <div class="p-4">
+                <!-- 价格和标题 -->
+                <div class="mb-4">
+                    <div class="flex items-baseline mb-2">
+                        <span class="text-sm text-red-500 font-bold">¥</span>
+                        <span class="text-3xl text-red-500 font-bold" id="detail-price">0.00</span>
+                        <span class="text-sm text-gray-400 ml-1" id="detail-unit">/份</span>
+                    </div>
+                    <h1 class="text-xl font-bold text-gray-900 mb-2 leading-tight" id="detail-name">商品名称</h1>
+                    <p class="text-sm text-gray-500 leading-relaxed" id="detail-desc">商品描述</p>
+                </div>
+
+                <!-- 规格选择 -->
+                <div class="border-t border-gray-100 py-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-3">规格</h3>
+                    <div class="flex flex-wrap gap-2" id="specs-container">
+                        <button class="px-4 py-2 border-2 border-emerald-500 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium">
+                            默认规格
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 商品详情图 -->
+                <div class="border-t border-gray-100 py-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-3">商品详情</h3>
+                    <div class="space-y-2" id="detail-images">
+                        <!-- 详情图将通过JS填充 -->
+                    </div>
+                    <br>
+                    <h3 class="text-sm font-bold text-gray-700 mb-3" id="spec-desc"></h3>
+                </div>
+
+                <!-- 底部占位 -->
+                <div class="h-20"></div>
+            </div>
+        </div>
+
+        <!-- 详情页底部操作栏 -->
+        <div class="absolute bottom-0 left-0 w-full bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <div class="text-center">
+                    <i class="fas fa-store text-gray-400 text-lg"></i>
+                    <p class="text-xs text-gray-500 mt-1">店铺</p>
+                </div>
+                <div class="text-center">
+                    <i class="fas fa-comment-dots text-gray-400 text-lg"></i>
+                    <p class="text-xs text-gray-500 mt-1">客服</p>
+                </div>
+                <div class="text-center relative">
+                    <i class="fas fa-shopping-cart text-gray-400 text-lg"></i>
+                    <p class="text-xs text-gray-500 mt-1">购物车</p>
+                    <span id="detail-cart-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center hidden">0</span>
+                </div>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="addToCartFromDetail()" class="bg-emerald-100 text-emerald-700 px-6 py-2.5 rounded-full font-bold text-sm">
+                    加入购物车
+                </button>
+                <button class="bg-emerald-500 text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-md">
+                    立即购买
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部购物车栏 (固定悬浮) -->
+    <div class="absolute bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-30 px-4 py-2 flex items-center justify-between" id="cart-bar">
+        <div class="relative -mt-8" id="cart-icon-container">
+            <div class="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shadow-lg border-4 border-white relative cursor-pointer transition-transform active:scale-95">
+                <i class="fas fa-shopping-cart text-white text-xl"></i>
+                <span id="cart-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center transform scale-0 transition-transform duration-200">0</span>
+            </div>
+            <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-bold text-gray-900 whitespace-nowrap">
+                ¥<span id="total-price">0.00</span>
+            </div>
+        </div>
+        <div class="flex-1 pl-4">
+            <p class="text-xs text-gray-500">另需配送费 ¥5</p>
+        </div>
+        <button class="bg-emerald-500 text-white px-6 py-2 rounded-full font-bold shadow-md active:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" id="checkout-btn" disabled>
+            去结算
+        </button>
+    </div>
+
+    <!-- JavaScript 逻辑 -->
+    <script>
+        // 模拟数据
+        const categories = [
+            { id: 'hot', name: '热销推荐', icon: 'fa-fire' },
+            { id: 'fruit', name: '婚宴伴手礼（礼盒）', icon: 'fa-apple-alt' },
+            { id: 'veg', name: '婚宴宾客礼（喜糖盒）', icon: 'fa-carrot' },
+            { id: 'meat', name: '宝宝伴手礼', icon: 'fa-drumstick-bite' },
+            { id: 'seafood', name: '商务伴手礼', icon: 'fa-fish' },
+            { id: 'dairy', name: '活动伴手礼', icon: 'fa-cheese' },
+            { id: 'drink', name: '节日伴手礼', icon: 'fa-wine-bottle' },
+            { id: 'snack', name: '伴手礼单品', icon: 'fa-cookie-bite' }
+        ];
+
+        const productsData = {
+            'hot': [
+                { 
+                    id: 101, 
+                    name: '抱抱桶', 
+                    desc: '', 
+                    img: 'assets/images/204-1.jpg',
+                    specs: [
+                        { id: '101-1', name: '礼盒1', price: 72.4, unit: '盒', img: ['assets/images/204-1.jpg'], desc: '' },
+                        { id: '101-2', name: '礼盒2', price: 95.4, unit: '盒', img: ['assets/images/204-2.jpg'], desc: ''},
+                        { id: '101-3', name: '礼盒3', price: 105.6, unit: '盒', img: ['assets/images/204-3.jpg'], desc: '' },
+                        { id: '101-4', name: '礼盒4', price: 60.8, unit: '盒', img: ['assets/images/204-4.jpg'], desc: '' },
+                        { id: '101-5', name: '礼盒5', price: 72.4, unit: '盒', img: ['assets/images/204-5.jpg'], desc: '' },
+                    ]
+                },
+                { 
+                    id: 102, 
+                    name: '椭圆皮质手提礼盒', 
+                    desc: '', 
+                    img: 'assets/images/210-1.jpeg',
+                    specs: [
+                        { id: '102-1', name: '礼盒1', price: 48, unit: '盒', img: ['assets/images/210-1.jpeg'] },
+                        { id: '102-2', name: '礼盒2', price: 137.7, unit: '盒', img: ['assets/images/210-2.jpeg'] },
+                        { id: '102-3', name: '礼盒3', price: 143, unit: '盒', img: ['assets/images/210-3.jpeg'] }
+                    ]
+                },
+                { 
+                    id: 103, 
+                    name: '杜邦男士手提盒', 
+                    desc: '', 
+                    img: 'assets/images/211-1.jpeg',
+                    specs: [
+                        { id: '103-1', name: '礼盒1', price: 93.5, unit: '盒', img: ['assets/images/211-1.jpeg'] },
+                        { id: '103-2', name: '礼盒2', price: 140, unit: '盒', img: ['assets/images/211-2.jpeg'] },
+                        { id: '103-3', name: '礼盒3', price: 97.5, unit: '盒', img: ['assets/images/211-3.jpeg'] },
+                        { id: '103-4', name: '礼盒4', price: 115, unit: '盒', img: ['assets/images/211-4.jpeg'] },
+                        { id: '103-5', name: '礼盒5', price: 112, unit: '盒', img: ['assets/images/211-5.jpeg'] },
+                        { id: '103-6', name: '礼盒6', price: 93.5, unit: '盒', img: ['assets/images/211-6.jpeg'] }
+                    ]
+                }
+            ],
+            'fruit': [
+                {
+                    id: 201, 
+                    name: '森系藤编蓝礼盒', 
+                    desc: '', 
+                    img: 'assets/images/201-1.jpg', 
+                    // detailImgs: ['https://images.unsplash.com/photo-1498557850523-fd3d118b962e?w=600&q=80'],
+                    specs: [
+                        { id: '201-1', name: '礼盒1', price: 53.35, unit: '盒', img: ['assets/images/201-1.jpg'], desc: '礼盒包括：韩宝莉香皂，保温杯，护手霜，卡莱斯香皂等'},
+                        { id: '201-2', name: '礼盒2', price: 49.9, unit: '盒', img: ['assets/images/201-2.jpg'], desc: '礼盒包括：韩宝莉香皂，保温杯，护手霜，卡莱斯香皂等'},
+                        { id: '201-3', name: '礼盒3', price: 44.65, unit: '盒', img: ['assets/images/201-3.jpg'], desc: '礼盒包括：韩宝莉香皂，保温杯，护手霜，卡莱斯香皂等'}  
+                    ]
+                },
+                { 
+                    id: 202, 
+                    name: '草编礼盒', 
+                    desc: '', 
+                    img: 'assets/images/202-1.jpg', 
+                    specs: [
+                        { id: '202-1', name: '礼盒', price: 125.8, unit: '盒', img: ['assets/images/202-1.jpg'], 
+                        desc: '礼盒包括：摇滚动物园身体乳，洗面奶，歌蒂梵巧克力，韩宝莉香皂等' }
+                    ]
+                },
+                { 
+                    id: 203, 
+                    name: '木质手提礼盒', 
+                    desc: '', 
+                    img: 'assets/images/203-1.jpg', 
+                    specs: [
+                        { id: '203-1', name: '礼盒1', price: 77.5, unit: '盒', img: ['assets/images/203-1.jpg'],
+                          desc: '礼盒包括：波波瑞护手霜,摇滚动物园身体乳,歌蒂梵巧克力,天作喜蜜等'
+                        }
+                    ]
+                },
+                { 
+                    id: 204, 
+                    name: '抱抱桶', 
+                    desc: '', 
+                    img: 'assets/images/204-1.jpg',
+                    specs: [
+                        { id: '204-1', name: '礼盒1', price: 72.4, unit: '盒', img: ['assets/images/204-1.jpg'], desc: '' },
+                        { id: '204-2', name: '礼盒2', price: 95.4, unit: '盒', img: ['assets/images/204-2.jpg'], desc: ''},
+                        { id: '204-3', name: '礼盒3', price: 105.6, unit: '盒', img: ['assets/images/204-3.jpg'], desc: '' },
+                        { id: '204-4', name: '礼盒4', price: 60.8, unit: '盒', img: ['assets/images/204-4.jpg'], desc: '' },
+                        { id: '204-5', name: '礼盒5', price: 72.4, unit: '盒', img: ['assets/images/204-5.jpg'], desc: '' },
+                    ]
+                },
+                { 
+                    id: 205, 
+                    name: '高档翻盖礼盒', 
+                    desc: '', 
+                    img: 'assets/images/205-1.jpg', 
+                    specs: [
+                        { id: '205-1', name: '礼盒1', price: 27.3, unit: '盒', img: ['assets/images/205-1.jpg'] },
+                        { id: '205-2', name: '礼盒2', price: 63.7, unit: '盒', img: ['assets/images/205-2.jpg'] },
+                        { id: '205-3', name: '礼盒3', price: 34.2, unit: '盒', img: ['assets/images/205-3.jpg'] },
+                        { id: '205-4', name: '礼盒4', price: 12.5, unit: '盒', img: ['assets/images/205-4.jpg'] }
+                    ]
+                },
+                { 
+                    id: 206, 
+                    name: '新中式红色花鸟礼盒', 
+                    desc: '', 
+                    img: 'assets/images/206-1.jpeg', 
+                    specs: [
+                        { id: '206-1', name: '礼盒1', price: 46.5, unit: '盒', img: ['assets/images/206-1.jpeg'] },
+                        { id: '206-2', name: '礼盒2', price: 46.5, unit: '盒', img: ['assets/images/206-2.jpeg'] }
+                    ]
+                },
+                 { 
+                    id: 207, 
+                    name: '喜上眉梢竹节手提礼盒', 
+                    desc: '', 
+                    img: 'assets/images/207-1.jpeg',
+                    specs: [
+                        { id: '207-1', name: '礼盒1', price: 50.3, unit: '盒', img: ['assets/images/207-1.jpeg'] },
+                        { id: '207-2', name: '礼盒2', price: 36.2, unit: '盒', img: ['assets/images/207-2.jpeg'] },
+                        { id: '207-3', name: '礼盒3', price: 27.3, unit: '盒', img: ['assets/images/207-3.jpeg'] },
+                        { id: '207-4', name: '礼盒4', price: 26.5, unit: '盒', img: ['assets/images/207-4.jpeg'] },
+                        { id: '207-5', name: '礼盒5', price: 48.9, unit: '盒', img: ['assets/images/207-5.jpeg'] },
+                        { id: '207-6', name: '礼盒6', price: 31.2, unit: '盒', img: ['assets/images/207-6.jpeg'] },
+                        { id: '207-7', name: '礼盒7', price: 25.6, unit: '盒', img: ['assets/images/207-7.jpeg'] },
+                        { id: '207-8', name: '礼盒8', price: 30.7, unit: '盒', img: ['assets/images/207-8.jpeg'] }
+                    ]
+                },
+                { 
+                    id: 208, 
+                    name: '山茶花礼盒', 
+                    desc: '', 
+                    img: 'assets/images/208-1.jpeg',
+                    specs: [
+                        { id: '208-1', name: '礼盒1', price: 46.2, unit: '盒', img: ['assets/images/208-1.jpeg'] },
+                        { id: '208-2', name: '礼盒2', price: 43.7, unit: '盒', img: ['assets/images/208-2.jpeg'] },
+                        { id: '208-3', name: '礼盒3', price: 32.2, unit: '盒', img: ['assets/images/208-3.jpeg'] }
+                    ]
+                },
+                { 
+                    id: 209, 
+                    name: '轻奢翻盖手提礼盒', 
+                    desc: '', 
+                    img: 'assets/images/209-1.jpeg',
+                    specs: [
+                        { id: '209-1', name: '礼盒1', price: 270.8, unit: '盒', img: ['assets/images/209-1.jpeg'] },
+                        { id: '209-2', name: '礼盒2', price: 54.3, unit: '盒', img: ['assets/images/209-2.jpeg'] },
+                        { id: '209-3', name: '礼盒3', price: 53, unit: '盒', img: ['assets/images/209-3.jpeg'] },
+                        { id: '209-4', name: '礼盒4', price: 53.8, unit: '盒', img: ['assets/images/209-4.jpeg'] },
+                        { id: '209-5', name: '礼盒5', price: 46.6, unit: '盒', img: ['assets/images/209-5.jpeg'] }
+                    ]
+                },
+                { 
+                    id: 210, 
+                    name: '椭圆皮质手提礼盒', 
+                    desc: '', 
+                    img: 'assets/images/210-1.jpeg',
+                    specs: [
+                        { id: '210-1', name: '礼盒1', price: 48, unit: '盒', img: ['assets/images/210-1.jpeg'] },
+                        { id: '210-2', name: '礼盒2', price: 137.7, unit: '盒', img: ['assets/images/210-2.jpeg'] },
+                        { id: '210-3', name: '礼盒3', price: 143, unit: '盒', img: ['assets/images/210-3.jpeg'] }
+                    ]
+                },
+                { 
+                    id: 211, 
+                    name: '杜邦男士手提盒', 
+                    desc: '', 
+                    img: 'assets/images/211-1.jpeg',
+                    specs: [
+                        { id: '211-1', name: '礼盒1', price: 93.5, unit: '盒', img: ['assets/images/211-1.jpeg'] },
+                        { id: '211-2', name: '礼盒2', price: 140, unit: '盒', img: ['assets/images/211-2.jpeg'] },
+                        { id: '211-3', name: '礼盒3', price: 97.5, unit: '盒', img: ['assets/images/211-3.jpeg'] },
+                        { id: '211-4', name: '礼盒4', price: 115, unit: '盒', img: ['assets/images/211-4.jpeg'] },
+                        { id: '211-5', name: '礼盒5', price: 112, unit: '盒', img: ['assets/images/211-5.jpeg'] },
+                        { id: '211-6', name: '礼盒6', price: 93.5, unit: '盒', img: ['assets/images/211-6.jpeg'] }
+                    ]
+                },
+                { 
+                    id: 212, 
+                    name: '绅士领结礼盒', 
+                    desc: '', 
+                    img: 'assets/images/212-1.jpeg',
+                    specs: [
+                        { id: '212-1', name: '礼盒1', price: 37.6, unit: '盒', img: ['assets/images/212-1.jpeg'] },
+                        { id: '212-2', name: '礼盒2', price: 34.9, unit: '盒', img: ['assets/images/212-2.jpeg'] },
+                        { id: '212-3', name: '礼盒3', price: 50.7, unit: '盒', img: ['assets/images/212-3.jpeg'] },
+                        { id: '212-4', name: '礼盒4', price: 53.1, unit: '盒', img: ['assets/images/212-4.jpeg'] },
+                        { id: '212-5', name: '礼盒5', price: 37.6, unit: '盒', img: ['assets/images/212-5.jpeg'] },
+                        { id: '212-6', name: '礼盒6', price: 45.3, unit: '盒', img: ['assets/images/212-6.jpeg'] },
+                        { id: '212-7', name: '礼盒7', price: 37.7, unit: '盒', img: ['assets/images/212-7.jpeg'] },
+                        { id: '212-8', name: '礼盒8', price: 62.8, unit: '盒', img: ['assets/images/212-8.jpeg'] },
+                    ]
+                }
+            ],
+            'veg': [
+                { id: 301, name: '喜袋', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/301-1.jpeg', 
+                specs: [{ id: '301-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/301-1.jpeg'] },
+                        { id: '301-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/301-2.jpeg'] }] },
+                { id: 302, name: '新中式手提', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/302-1.jpeg', 
+                specs: [{ id: '302-1', name: '默认样式', price: 999, unit: '个', img: ['assets/images/302-1.jpeg']}] },
+                { id: 303, name: '新中式木环手提礼袋', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/303-1.jpeg', 
+                specs: [{ id: '303-1', name: '默认样式', price: 999, unit: '个', img: ['assets/images/303-1.jpeg'] }] },
+                { id: 304, name: '爱心镂空礼袋', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/304-1.jpeg', 
+                specs: [{ id: '304-1', name: '默认样式', price: 999, unit: '个', img: ['assets/images/304-1.jpeg'] }] },
+                { id: 305, name: '新中式蝴蝶结礼袋', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/305-1.jpeg', 
+                specs: [{ id: '305-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/305-1.jpeg'] },
+                        { id: '305-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/305-2.jpeg'] },
+                        { id: '305-3', name: '样式3', price: 999, unit: '个', img: ['assets/images/305-3.jpeg'] }] },
+                { id: 306, name: '中式皮带款礼袋', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/306-1.jpeg', 
+                specs: [{ id: '306-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/306-1.jpeg'] },
+                        { id: '306-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/306-2.jpeg'] },
+                        { id: '306-3', name: '样式3', price: 999, unit: '个', img: ['assets/images/306-3.jpeg'] },
+                        { id: '306-4', name: '样式4', price: 999, unit: '个', img: ['assets/images/306-4.jpeg'] },
+                        { id: '306-5', name: '样式5', price: 999, unit: '个', img: ['assets/images/306-5.jpeg'] }] },
+                { id: 307, name: '吾家有喜手提喜糖袋', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/307-1.jpg', 
+                specs: [{ id: '307-1', name: '默认样式', price: 999, unit: '个', img: ['assets/images/307-1.jpg'] }] },
+                { id: 308, name: '中式方形手提喜糖盒', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/308-1.jpg', 
+                specs: [{ id: '308-1', name: '默认样式', price: 999, unit: '个', img: ['assets/images/308-1.jpg'] }] },
+                { id: 309, name: '三角形手提喜糖盒', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/309-1.jpg', 
+                specs: [{ id: '309-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/309-1.jpg'] },
+                        { id: '309-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/309-2.jpg'] },
+                        { id: '309-3', name: '样式3', price: 999, unit: '个', img: ['assets/images/309-3.jpg'] },
+                        { id: '309-4', name: '样式4', price: 999, unit: '个', img: ['assets/images/309-4.jpg'] }] },
+                { id: 310, name: '西式唱片喜糖盒', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/310-1.jpg', 
+                specs: [{ id: '310-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/310-1.jpg'] },
+                        { id: '310-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/310-2.jpg'] }] },
+                { id: 311, name: '新中式烫金火漆印手提喜糖盒', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/311-1.jpg', 
+                specs: [{ id: '311-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/311-1.jpg'] }] },
+                { id: 312, name: '中式木环喜糖盒', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/312-1.jpg', 
+                specs: [{ id: '312-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/312-1.jpg'] },
+                        { id: '312-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/312-2.jpg'] }] },
+                { id: 313, name: '中式烫金方盒', desc: '', price: 999, unit: '个', 
+                img: 'assets/images/313-1.jpg', 
+                specs: [{ id: '313-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/313-1.jpg'] }] },
+                { id: 314, name: '新中式手提方形喜糖盒', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/314-1.jpg', 
+                    specs: [{ id: '314-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/314-1.jpg'] },
+                        { id: '314-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/314-2.jpg'] },
+                        { id: '314-3', name: '样式3', price: 999, unit: '个', img: ['assets/images/314-3.jpg'] }] },
+                { id: 315, name: '西式珍珠手提喜糖盒', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/315-1.jpg', 
+                    specs: [{ id: '315-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/315-1.jpg'] }] },
+                { id: 316, name: '小清新手工喜糖盒', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/316-1.jpg', 
+                    specs: [{ id: '316-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/316-1.jpg'] }] },
+                { id: 317, name: '中式圆桶喜糖盒', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/317-1.jpg', 
+                    specs: [{ id: '317-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/317-1.jpg'] }] },
+                { id: 318, name: '梯形手提礼盒', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/318-1.jpg', 
+                    specs: [{ id: '318-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/318-1.jpg'] }] },
+                { id: 319, name: '奶FUFU手工喜糖盒', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/319-1.jpg', 
+                    specs: [{ id: '319-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/319-1.jpg'] },
+                            { id: '319-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/319-2.jpg'] }] }
+            ],
+            'meat': [
+                { id: 401, name: '小房子手提包', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/401-0.jpg', 
+                    specs: [{ id: '401-1', name: '套餐1', price: 999, unit: '个', img: ['assets/images/401-1.jpg']},
+                            { id: '401-2', name: '套餐2', price: 999, unit: '个', img: ['assets/images/401-2.jpg']},
+                            { id: '401-3', name: '套餐3', price: 999, unit: '个', img: ['assets/images/401-3.jpg']},
+                            { id: '401-4', name: '套餐4', price: 999, unit: '个', img: ['assets/images/401-4.jpg']},
+                            { id: '401-5', name: '套餐5', price: 999, unit: '个', img: ['assets/images/401-5.jpg']},
+                            { id: '401-6', name: '套餐6', price: 999, unit: '个', img: ['assets/images/401-6.jpg']}] },
+                { id: 402, name: '醒狮系列手提礼包', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/402-1.jpg', 
+                    specs: [{ id: '402-1', name: '套餐1', price: 999, unit: '个', img: ['assets/images/402-1.jpg']},
+                            { id: '402-2', name: '套餐2', price: 999, unit: '个', img: ['assets/images/402-2.jpg']},
+                            { id: '402-3', name: '套餐3', price: 999, unit: '个', img: ['assets/images/402-3.jpg']},
+                            { id: '402-4', name: '套餐4', price: 999, unit: '个', img: ['assets/images/402-4.jpg']},
+                            { id: '402-5', name: '套餐5', price: 999, unit: '个', img: ['assets/images/402-5.jpg']}] },
+                { id: 403, name: '萌趣宝宝手提礼袋', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/403-1.jpg', 
+                    specs: [{ id: '403-1', name: '详情1', price: 999, unit: '个', img: ['assets/images/403-1.jpg']},
+                            { id: '403-2', name: '详情2', price: 999, unit: '个', img: ['assets/images/403-2.jpg']},
+                            { id: '403-3', name: '详情3', price: 999, unit: '个', img: ['assets/images/403-3.jpg']},
+                            { id: '403-4', name: '详情4', price: 999, unit: '个', img: ['assets/images/403-4.jpg']},
+                            { id: '403-5', name: '详情5', price: 999, unit: '个', img: ['assets/images/403-5.jpg']}] },
+                { id: 404, name: '编织手提袋', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/404-1.jpg', 
+                    specs: [{ id: '404-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/404-1.jpg']},
+                            { id: '404-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/404-2.jpg']},
+                            { id: '404-3', name: '样式3', price: 999, unit: '个', img: ['assets/images/404-3.jpg']},
+                            { id: '404-4', name: '样式4', price: 999, unit: '个', img: ['assets/images/404-4.jpg']}] },
+                { id: 405, name: '绳编圆筒包', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/405-1.jpg', 
+                    specs: [{ id: '405-1', name: '样式1', price: 999, unit: '个', img: ['assets/images/405-1.jpg']},
+                            { id: '405-2', name: '样式2', price: 999, unit: '个', img: ['assets/images/405-2.jpg']},
+                            { id: '405-3', name: '样式3', price: 999, unit: '个', img: ['assets/images/405-3.jpg']}] },
+                { id: 406, name: '灯芯绒手提包', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/406-1.jpg', 
+                    specs: [{ id: '406-1', name: '详情1', price: 999, unit: '个', img: ['assets/images/406-1.jpg']},
+                            { id: '406-2', name: '详情2', price: 999, unit: '个', img: ['assets/images/406-2.jpg']}] },
+                { id: 407, name: '卡通保温便当礼袋', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/407-1.jpg', 
+                    specs: [{ id: '407-1', name: '详情1', price: 999, unit: '个', img: ['assets/images/407-1.jpg']},
+                            { id: '407-2', name: '详情2', price: 999, unit: '个', img: ['assets/images/407-2.jpg']}] },
+                { id: 408, name: '两用卡通帆布包', desc: '', price: 999, unit: '个', 
+                    img: 'assets/images/408-1.jpg', 
+                    specs: [{ id: '408-1', name: '详情1', price: 999, unit: '个', img: ['assets/images/408-1.jpg']},
+                            { id: '408-2', name: '详情2', price: 999, unit: '个', img: ['assets/images/408-2.jpg']},
+                            { id: '408-3', name: '详情3', price: 999, unit: '个', img: ['assets/images/408-3.jpg']}] },
+                { id: 409, name: '蒸蒸日上笼屉礼盒', desc: '', price: 71, unit: '个', 
+                    img: 'assets/images/409-1.jpg', 
+                    specs: [{ id: '409-1', name: '套餐1', price: 71, unit: '个', img: ['assets/images/409-1.jpg']},
+                            { id: '409-2', name: '套餐2', price: 71, unit: '个', img: ['assets/images/409-2.jpg']},
+                            { id: '409-3', name: '套餐3', price: 27.5, unit: '个', img: ['assets/images/409-3.jpg']},
+                            { id: '409-4', name: '套餐4', price: 71, unit: '个', img: ['assets/images/409-4.jpg']},
+                            { id: '409-5', name: '套餐5', price: 30.46, unit: '个', img: ['assets/images/409-5.jpg']},
+                            { id: '409-6', name: '套餐6', price: 58.5, unit: '个', img: ['assets/images/409-6.jpg']},
+                            { id: '409-7', name: '套餐7', price: 58.7, unit: '个', img: ['assets/images/409-7.jpg']},
+                            { id: '409-8', name: '套餐8', price: 999, unit: '个', img: ['assets/images/409-8.jpg']}] }      
+            ],
+            'seafood': [
+                { id: 501, name: '椭圆纸盒', desc: '', price: 31.5, unit: '套', 
+                    img: 'assets/images/501-0.jpg', 
+                    specs: [{ id: '501-1', name: '套餐1', price: 31.5, unit: '套', img: ['assets/images/501-1.jpg']},
+                            { id: '501-2', name: '套餐2', price: 25.8, unit: '套', img: ['assets/images/501-2.jpg']},
+                            { id: '501-3', name: '套餐3', price: 32.7, unit: '套', img: ['assets/images/501-3.jpg']},
+                            { id: '501-4', name: '套餐4', price: 30.8, unit: '套', img: ['assets/images/501-4.jpg']},
+                            { id: '501-5', name: '套餐5', price: 37.3, unit: '套', img: ['assets/images/501-5.jpg']},
+                            { id: '501-6', name: '套餐6', price: 36.5, unit: '套', img: ['assets/images/501-6.jpg']}] },
+                { id: 502, name: '牛皮纸盒', desc: '', price: 6, unit: '套', 
+                    img: 'assets/images/502-1.jpg', 
+                    specs: [{ id: '502-1', name: '套餐1', price: 6, unit: '套', img: ['assets/images/502-1.jpg']},
+                            { id: '502-2', name: '套餐2', price: 23.4, unit: '套', img: ['assets/images/502-2.jpg']},
+                            { id: '502-3', name: '套餐3', price: 32.6, unit: '套', img: ['assets/images/502-3.jpg']}] },
+                { id: 503, name: '定制手提箱', desc: '', price: 118, unit: '套', 
+                    img: 'assets/images/503-0.jpg', 
+                    specs: [{ id: '503-1', name: '详情1', price: 118, unit: '套', img: ['assets/images/503-1.jpg']},
+                            { id: '503-2', name: '套餐1', price: 118, unit: '套', img: ['assets/images/503-2.jpg']},
+                            { id: '503-3', name: '套餐2', price: 118, unit: '套', img: ['assets/images/503-3.jpg']}] },
+                { id: 504, name: '国风定制礼盒', desc: '', price: 35, unit: '套', 
+                    img: 'assets/images/504-1.jpg', 
+                    specs: [{ id: '504-1', name: '套餐1', price: 35, unit: '套', img: ['assets/images/504-1.jpg']},
+                            { id: '504-2', name: '套餐2', price: 57, unit: '套', img: ['assets/images/504-2.jpg']},
+                            { id: '504-3', name: '套餐3', price: 57, unit: '套', img: ['assets/images/504-3.jpg']},
+                            { id: '504-4', name: '套餐4', price: 57, unit: '套', img: ['assets/images/504-4.jpg']},
+                            { id: '504-5', name: '套餐5', price: 60, unit: '套', img: ['assets/images/504-5.jpg']}] },
+                { id: 505, name: '国潮文创定制礼盒', desc: '', price: 72.8, unit: '套', 
+                    img: 'assets/images/505-0.jpg', 
+                    specs: [{ id: '505-1', name: '详情1', price: 72.8, unit: '套', img: ['assets/images/505-1.jpg']},
+                            { id: '505-2', name: '套餐1', price: 72.8, unit: '套', img: ['assets/images/505-2.jpg']}] },
+                { id: 506, name: '竹节手提毛毡包', desc: '', price: 22.7, unit: '套', 
+                    img: 'assets/images/506-0.jpg', 
+                    specs: [{ id: '506-1', name: '详情1', price: 22.7, unit: '套', img: ['assets/images/506-1.jpg']},
+                            { id: '506-2', name: '详情2', price: 22.7, unit: '套', img: ['assets/images/506-2.jpg']}] },
+                { id: 507, name: '手提行李箱', desc: '', price: 96.2, unit: '套', 
+                    img: 'assets/images/507-1.jpg', 
+                    specs: [{ id: '507-1', name: '套餐1', price: 96.2, unit: '套', img: ['assets/images/507-1.jpg']},
+                            { id: '507-2', name: '套餐2', price: 60.1, unit: '套', img: ['assets/images/507-2.jpg']},
+                            { id: '507-3', name: '套餐3', price: 76.7, unit: '套', img: ['assets/images/507-3.jpg']},
+                            { id: '507-4', name: '套餐4', price: 102.3, unit: '套', img: ['assets/images/507-4.jpg']},
+                            { id: '507-5', name: '套餐5', price: 84.9, unit: '套', img: ['assets/images/507-5.jpg']},
+                            { id: '507-6', name: '套餐6', price: 89.7, unit: '套', img: ['assets/images/507-6.jpg']},
+                            { id: '507-7', name: '套餐7', price: 108, unit: '套', img: ['assets/images/507-7.jpg']},
+                            { id: '507-8', name: '套餐8', price: 81.2, unit: '套', img: ['assets/images/507-8.jpg']}] },
+                { id: 508, name: '圆筒手提包', desc: '', price: 36, unit: '套', 
+                    img: 'assets/images/508-0.jpg', 
+                    specs: [{ id: '508-1', name: '详情1', price: 36, unit: '套', img: ['assets/images/508-1.jpg']}] },
+                { id: 509, name: '毛毡方包', desc: '', price: 39.9, unit: '套', 
+                    img: 'assets/images/509-1.jpg', 
+                    specs: [{ id: '509-1', name: '套餐1', price: 39.9, unit: '套', img: ['assets/images/509-1.jpg']},
+                            { id: '509-2', name: '套餐2', price: 37.6, unit: '套', img: ['assets/images/509-2.jpg']},
+                            { id: '509-3', name: '详情1', price: 999, unit: '套', img: ['assets/images/509-3.jpg']}] },
+                { id: 510, name: '定制方形纸盒', desc: '', price: 36, unit: '套', 
+                    img: 'assets/images/510-1.jpg', 
+                    specs: [{ id: '510-1', name: '详情1', price: 36, unit: '套', img: ['assets/images/510-1.jpg']}] }      
+            ],
+            'dairy': [
+                { id: 601, name: '黑紫方盒', desc: '', price: 26.5, unit: '套', 
+                    img: 'assets/images/601-0.jpg', 
+                    specs: [{ id: '601-1', name: '套餐1', price: 16.5, unit: '套', img: ['assets/images/601-1.jpg']},
+                            { id: '601-2', name: '套餐2', price: 16.2, unit: '套', img: ['assets/images/601-2.jpg']},
+                            { id: '601-3', name: '套餐3', price: 19.2, unit: '套', img: ['assets/images/601-3.jpg']},
+                            { id: '601-4', name: '套餐4', price: 17.7, unit: '套', img: ['assets/images/601-4.jpg']},
+                            { id: '601-5', name: '套餐5', price: 20, unit: '套', img: ['assets/images/601-5.jpg']},
+                            { id: '601-6', name: '套餐6', price: 18.2, unit: '套', img: ['assets/images/601-6.jpg']},
+                            { id: '601-7', name: '套餐7', price: 26.5, unit: '套', img: ['assets/images/601-7.jpg']},
+                            { id: '601-8', name: '套餐8', price: 22.9, unit: '套', img: ['assets/images/601-8.jpg']}] },
+                { id: 602, name: '黑粉方盒', desc: '', price: 21.2, unit: '套', 
+                    img: 'assets/images/602-0.jpg', 
+                    specs: [{ id: '602-1', name: '套餐1', price: 21.2, unit: '套', img: ['assets/images/602-1.jpg']},
+                            { id: '602-2', name: '套餐2', price: 23, unit: '套', img: ['assets/images/602-2.jpg']},
+                            { id: '602-3', name: '套餐3', price: 21, unit: '套', img: ['assets/images/602-3.jpg']},
+                            { id: '602-4', name: '套餐4', price: 28.5, unit: '套', img: ['assets/images/602-4.jpg']},
+                            { id: '602-5', name: '套餐5', price: 21, unit: '套', img: ['assets/images/602-5.jpg']},
+                            { id: '602-6', name: '套餐6', price: 23.2, unit: '套', img: ['assets/images/602-6.jpg']},
+                            { id: '602-7', name: '套餐7', price: 28.5, unit: '套', img: ['assets/images/602-7.jpg']},
+                            { id: '602-8', name: '套餐8', price: 22, unit: '套', img: ['assets/images/602-8.jpg']}] }
+            ],
+            'drink': [
+                { id: 701, name: '中秋镂空编织袋', desc: '', price: 71.3, unit: '套', 
+                    img: 'assets/images/701-0.jpg', 
+                    specs: [{ id: '701-1', name: '套餐1', price: 71.3, unit: '套', img: ['assets/images/701-1.jpg']},
+                            { id: '701-2', name: '套餐2', price: 63.78, unit: '套', img: ['assets/images/701-2.jpg']},
+                            { id: '701-3', name: '套餐3', price: 71.88, unit: '套', img: ['assets/images/701-3.jpg']},
+                            { id: '701-4', name: '套餐4', price: 32, unit: '套', img: ['assets/images/701-4.jpg']}] },
+                { id: 702, name: '竹节手提编织袋', desc: '', price: 43.21, unit: '套', 
+                    img: 'assets/images/702-1.jpg', 
+                    specs: [{ id: '702-1', name: '套餐1', price: 43.21, unit: '套', img: ['assets/images/702-1.jpg']},
+                            { id: '702-2', name: '套餐2', price: 59.94, unit: '套', img: ['assets/images/702-2.jpg']},
+                            { id: '702-3', name: '套餐3', price: 66.94, unit: '套', img: ['assets/images/702-3.jpg']},
+                            { id: '702-4', name: '套餐4', price: 23, unit: '套', img: ['assets/images/702-4.jpg']}] },
+                { id: 703, name: '手提竹编袋', desc: '', price: 22, unit: '套', 
+                    img: 'assets/images/703-1.jpg', 
+                    specs: [{ id: '703-1', name: '套餐1', price: 22, unit: '套', img: ['assets/images/703-1.jpg']},
+                            { id: '703-2', name: '套餐2', price: 44.68, unit: '套', img: ['assets/images/703-2.jpg']},
+                            { id: '703-3', name: '套餐3', price: 61.3, unit: '套', img: ['assets/images/703-3.jpg']},
+                            { id: '703-4', name: '套餐4', price: 61.88, unit: '套', img: ['assets/images/703-4.jpg']},
+                            { id: '703-5', name: '套餐5', price: 53.79, unit: '套', img: ['assets/images/703-5.jpg']},
+                            { id: '703-6', name: '套餐6', price: 22, unit: '套', img: ['assets/images/703-6.jpg']}] },
+                { id: 704, name: '古韵养生健康礼盒', desc: '', price: 28.7, unit: '套', 
+                    img: 'assets/images/704-0.jpg', 
+                    specs: [{ id: '704-1', name: '套餐1', price: 28.7, unit: '套', img: ['assets/images/704-1.jpg']},
+                            { id: '704-2', name: '套餐2', price: 30.2, unit: '套', img: ['assets/images/704-2.jpg']},
+                            { id: '704-3', name: '套餐3', price: 35.5, unit: '套', img: ['assets/images/704-3.jpg']},
+                            { id: '704-4', name: '套餐4', price: 21.5, unit: '套', img: ['assets/images/704-4.jpg']},
+                            { id: '704-5', name: '套餐5', price: 28.8, unit: '套', img: ['assets/images/704-5.jpg']},
+                            { id: '704-6', name: '套餐6', price: 29.5, unit: '套', img: ['assets/images/704-6.jpg']},
+                            { id: '704-7', name: '套餐7', price: 25.5, unit: '套', img: ['assets/images/704-7.jpg']},
+                            { id: '704-8', name: '套餐8', price: 19.5, unit: '套', img: ['assets/images/704-8.jpg']}] },
+                { id: 705, name: '香薰国风木质礼盒', desc: '', price: 22.3, unit: '套', 
+                    img: 'assets/images/705-0.jpg', 
+                    specs: [{ id: '705-1', name: '套餐1', price: 22.3, unit: '套', img: ['assets/images/705-1.jpg']},
+                            { id: '705-2', name: '套餐2', price: 30.7, unit: '套', img: ['assets/images/705-2.jpg']},
+                            { id: '705-3', name: '套餐3', price: 25.7, unit: '套', img: ['assets/images/705-3.jpg']}] },
+                { id: 706, name: '中式翠竹香薰礼盒', desc: '', price: 35.2, unit: '套', 
+                    img: 'assets/images/706-1.jpg', 
+                    specs: [{ id: '706-1', name: '套餐1', price: 35.2, unit: '套', img: ['assets/images/706-1.jpg']},
+                            { id: '706-2', name: '套餐2', price: 35.2, unit: '套', img: ['assets/images/706-2.jpg']},
+                            { id: '706-3', name: '套餐3', price: 35.2, unit: '套', img: ['assets/images/706-3.jpg']},  
+                            { id: '706-4', name: '套餐4', price: 35.2, unit: '套', img: ['assets/images/706-4.jpg']}] }
+            ],
+            'snack': [
+                { id: 801, name: '食品', desc: '', price: 999, unit: '件', 
+                    img: 'assets/images/801-1.jpg',
+                    specs: [{ id: '801-1', name: '样式1', price: 999, unit: '件', img: ['assets/images/801-1.jpg'] },
+                            { id: '801-2', name: '样式2', price: 999, unit: '件', img: ['assets/images/801-2.jpg'] },
+                            { id: '801-3', name: '样式3', price: 999, unit: '件', img: ['assets/images/801-3.jpg'] },   
+                            { id: '801-4', name: '样式4', price: 999, unit: '件', img: ['assets/images/801-4.jpg'] }] },
+                { id: 802, name: '洗护', desc: '', price: 999, unit: '件', 
+                    img: 'assets/images/802-1.jpg',
+                    specs: [{ id: '802-1', name: '样式1', price: 999, unit: '件', img: ['assets/images/802-1.jpg'] },
+                            { id: '802-2', name: '样式2', price: 999, unit: '件', img: ['assets/images/802-2.jpg'] },
+                            { id: '802-3', name: '样式3', price: 999, unit: '件', img: ['assets/images/802-3.jpg'] },   
+                            { id: '802-4', name: '样式4', price: 999, unit: '件', img: ['assets/images/802-4.jpg'] },
+                            { id: '802-5', name: '样式5', price: 999, unit: '件', img: ['assets/images/802-5.jpg'] },
+                            { id: '802-6', name: '样式6', price: 999, unit: '件', img: ['assets/images/802-6.jpg'] },
+                            { id: '802-7', name: '样式7', price: 999, unit: '件', img: ['assets/images/802-7.jpg'] }] },
+                { id: 803, name: '日用', desc: '', price: 999, unit: '件', 
+                    img: 'assets/images/803-1.jpg',
+                    specs: [{ id: '803-1', name: '样式1', price: 999, unit: '件', img: ['assets/images/803-1.jpg'] },
+                            { id: '803-2', name: '样式2', price: 999, unit: '件', img: ['assets/images/803-2.jpg'] },
+                            { id: '803-3', name: '样式3', price: 999, unit: '件', img: ['assets/images/803-3.jpg'] }] }
+            ]
+        };
+
+        // 状态管理
+        let state = {
+            currentCategory: 'hot',
+            cart: [], // 购物车数组，每项包含完整商品信息和规格
+            searchQuery: '',
+            isSearching: false,
+            currentProduct: null, // 当前查看的商品
+            currentSpec: null // 当前选择的规格
+        };
+
+        // DOM 元素
+        const navEl = document.getElementById('category-nav');
+        const productListEl = document.getElementById('product-list');
+        const cartBadgeEl = document.getElementById('cart-badge');
+        const totalPriceEl = document.getElementById('total-price');
+        const checkoutBtn = document.getElementById('checkout-btn');
+        const searchInput = document.getElementById('search-input');
+        const clearBtn = document.getElementById('clear-search');
+        const searchStatus = document.getElementById('search-status');
+        const searchStatusText = document.getElementById('search-status-text');
+        const emptyState = document.getElementById('empty-state');
+        const productDetail = document.getElementById('product-detail');
+        const detailCartBadge = document.getElementById('detail-cart-badge');
+
+        // 初始化
+        function init() {
+            renderNav();
+            renderProducts('hot');
+            setupSearch();
+        }
+
+        // 设置搜索功能
+        function setupSearch() {
+            // 输入事件监听（防抖）
+            let debounceTimer;
+            searchInput.addEventListener('input', (e) => {
+                const value = e.target.value.trim();
+                
+                // 控制清除按钮显示
+                if (value.length > 0) {
+                    clearBtn.classList.add('visible');
+                } else {
+                    clearBtn.classList.remove('visible');
+                }
+
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    performSearch(value);
+                }, 300); // 300ms 防抖
+            });
+
+            // 聚焦时如果有关键词，保持搜索状态
+            searchInput.addEventListener('focus', () => {
+                if (state.searchQuery) {
+                    searchInput.value = state.searchQuery;
+                }
+            });
+        }
+
+        // 执行搜索
+        function performSearch(query) {
+            state.searchQuery = query;
+            
+            if (query.length === 0) {
+                // 清空搜索，返回当前分类
+                state.isSearching = false;
+                searchStatus.classList.add('hidden');
+                emptyState.classList.add('hidden');
+                productListEl.classList.remove('hidden');
+                renderProducts(state.currentCategory);
+                return;
+            }
+
+            state.isSearching = true;
+            
+            // 在所有分类中搜索
+            const allProducts = [];
+            for (const catId in productsData) {
+                const catProducts = productsData[catId].map(p => ({
+                    ...p,
+                    categoryId: catId,
+                    categoryName: categories.find(c => c.id === catId)?.name || ''
+                }));
+                allProducts.push(...catProducts);
+            }
+
+            // 模糊匹配：名称、描述、分类名
+            const results = allProducts.filter(product => {
+                const searchLower = query.toLowerCase();
+                const nameMatch = product.name.toLowerCase().includes(searchLower);
+                const descMatch = product.desc.toLowerCase().includes(searchLower);
+                const catMatch = product.categoryName.toLowerCase().includes(searchLower);
+                return nameMatch || descMatch || catMatch;
+            });
+
+            // 显示搜索结果状态
+            searchStatus.classList.remove('hidden');
+            searchStatusText.textContent = `"${query}" 的搜索结果 (${results.length})`;
+
+            // 渲染结果
+            if (results.length === 0) {
+                productListEl.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                productListEl.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+                renderSearchResults(results, query);
+            }
+
+            // 搜索时隐藏左侧导航高亮（因为显示的是跨分类结果）
+            updateNavForSearch(true);
+        }
+
+        // 渲染搜索结果
+        function renderSearchResults(products, query) {
+            // 高亮匹配文本的函数
+            const highlightText = (text, query) => {
+                if (!query) return text;
+                const regex = new RegExp(`(${query})`, 'gi');
+                return text.replace(regex, '<span class="text-emerald-600 bg-emerald-50 font-bold">$1</span>');
+            };
+
+            productListEl.innerHTML = `
+                <div class="mb-2 flex items-center justify-between">
+                    <h2 class="font-bold text-lg text-gray-800">搜索结果</h2>
+                    <span class="text-xs text-gray-500">找到 ${products.length} 个商品</span>
+                </div>
+                <div class="grid grid-cols-1 gap-4">
+                    ${products.map(p => createProductCard(p, true, query)).join('')}
+                </div>
+            `;
+        }
+
+        // 清空搜索
+        window.clearSearch = function() {
+            searchInput.value = '';
+            clearBtn.classList.remove('visible');
+            searchInput.blur();
+            performSearch('');
+        };
+
+        // 渲染左侧导航
+        function renderNav() {
+            navEl.innerHTML = categories.map(cat => `
+                <div 
+                    class="nav-item py-4 px-2 text-center text-xs text-gray-600 cursor-pointer transition-colors duration-200 ${cat.id === state.currentCategory ? 'active' : 'hover:bg-gray-200'}"
+                    onclick="switchCategory('${cat.id}')"
+                    data-cat-id="${cat.id}"
+                >
+                    <div class="mb-1 text-lg"><i class="fas ${cat.icon}"></i></div>
+                    ${cat.name}
+                </div>
+            `).join('');
+        }
+
+        // 更新导航状态（搜索时取消高亮）
+        function updateNavForSearch(isSearching) {
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => {
+                if (isSearching) {
+                    item.classList.remove('active');
+                    item.classList.add('opacity-50');
+                } else {
+                    item.classList.remove('opacity-50');
+                    if (item.dataset.catId === state.currentCategory) {
+                        item.classList.add('active');
+                    }
+                }
+            });
+        }
+
+        // 切换分类
+        window.switchCategory = function(catId) {
+            // 如果正在搜索，先清除搜索
+            if (state.isSearching) {
+                clearSearch();
+            }
+            
+            if (state.currentCategory === catId) return;
+            
+            state.currentCategory = catId;
+            
+            // 更新导航样式
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => {
+                if (item.dataset.catId === catId) {
+                    item.classList.add('active');
+                    item.classList.remove('hover:bg-gray-200', 'opacity-50');
+                } else {
+                    item.classList.remove('active');
+                    item.classList.add('hover:bg-gray-200');
+                }
+            });
+
+            // 重新渲染商品
+            renderProducts(catId);
+        };
+
+        // 渲染商品列表
+        function renderProducts(catId) {
+            // 简单的加载动画效果
+            productListEl.innerHTML = '<div class="grid grid-cols-1 gap-4 animate-pulse"><div class="h-32 bg-gray-200 rounded-lg"></div><div class="h-32 bg-gray-200 rounded-lg"></div></div>';
+            
+            // 模拟网络延迟
+            setTimeout(() => {
+                const products = productsData[catId] || [];
+                
+                if (products.length === 0) {
+                    productListEl.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-64 text-gray-400">
+                            <i class="fas fa-box-open text-4xl mb-2"></i>
+                            <p>暂无商品</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                productListEl.innerHTML = `
+                    <div class="mb-2">
+                        <h2 class="font-bold text-lg text-gray-800 flex items-center">
+                            ${categories.find(c => c.id === catId).name}
+                            <span class="text-xs font-normal text-gray-400 ml-2">精选${products.length}款好物</span>
+                        </h2>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4">
+                        ${products.map(p => createProductCard(p)).join('')}
+                    </div>
+                `;
+            }, 150);
+        }
+
+        // 创建商品卡片 HTML
+        function createProductCard(product, isSearchResult = false, query = '') {
+            // 计算商品在购物车中的总数量（所有规格）
+            const count = state.cart.reduce((sum, item) => {
+                return item.id === product.id ? sum + item.quantity : sum;
+            }, 0);
+            
+            // 如果是搜索结果，高亮匹配文本
+            let displayName = product.name;
+            let displayDesc = product.desc;
+            
+            if (isSearchResult && query) {
+                const regex = new RegExp(`(${query})`, 'gi');
+                displayName = product.name.replace(regex, '<span class="text-emerald-600 bg-emerald-50 px-0.5 rounded">$1</span>');
+                displayDesc = product.desc.replace(regex, '<span class="text-emerald-600 bg-emerald-50 px-0.5 rounded">$1</span>');
+            }
+
+            // 分类标签（仅在搜索结果中显示）
+            const categoryTag = isSearchResult ? `
+                <span class="inline-block text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full mb-1">
+                    ${product.categoryName || categories.find(c => c.id === state.currentCategory)?.name}
+                </span>
+            ` : '';
+
+            return `
+                <div class="flex bg-white rounded-xl p-2 shadow-sm border border-gray-100 relative overflow-hidden group search-highlight cursor-pointer" onclick="openDetail(${product.id})">
+                    <div class="w-28 h-28 flex-none rounded-lg overflow-hidden bg-gray-100 relative">
+                        <img src="${product.img}" alt="${product.name}" class="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500">
+                    </div>
+                    <div class="flex-1 ml-3 flex flex-col justify-between py-1">
+                        <div>
+                            ${categoryTag}
+                            <h3 class="font-bold text-gray-800 text-base leading-tight mb-1">${displayName}</h3>
+                            <p class="text-xs text-gray-500 line-clamp-1 mb-2">${displayDesc}</p>
+                        </div>
+                        <div class="flex items-end justify-between">
+                            <div class="flex items-baseline">
+                                <span class="text-xs text-red-500 font-bold">¥</span>
+                                <span class="text-xl text-red-500 font-bold">${((product.price !== undefined) ? product.price : (product.specs && product.specs.length > 0 ? product.specs[0].price : 0)).toFixed(1)}</span>
+                                <span class="text-xs text-gray-400 ml-1">/${(product.unit !== undefined) ? product.unit : (product.specs && product.specs.length > 0 ? product.specs[0].unit : '')}</span>
+                            </div>
+                            
+                            <!-- 加减按钮区域 (阻止冒泡) -->
+                            <div class="flex items-center" onclick="event.stopPropagation()">
+                                ${count > 0 ? `
+                                    <button onclick="updateCart(${product.id}, -1)" class="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center text-gray-500 active:bg-gray-100">
+                                        <i class="fas fa-minus text-xs"></i>
+                                    </button>
+                                    <span class="mx-2 text-sm font-medium w-4 text-center">${count}</span>
+                                ` : ''}
+                                <button onclick="updateCart(${product.id}, 1)" class="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md active:scale-90 transition-transform">
+                                    <i class="fas fa-plus text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 打开商品详情页
+        window.openDetail = function(productId) {
+            // 查找商品
+            let product = null;
+            for (const catId in productsData) {
+                const found = productsData[catId].find(p => p.id === productId);
+                if (found) {
+                    product = found;
+                    break;
+                }
+            }
+
+            if (!product) return;
+
+            state.currentProduct = product;
+            // 默认选择第一个规格
+            state.currentSpec = product.specs && product.specs.length > 0 ? product.specs[0] : null;
+
+            // 填充详情数据
+            function updateProductDetails(spec) {
+                document.getElementById('detail-image').src = spec ? spec.img : product.img;
+                document.getElementById('detail-name').textContent = product.name;
+                document.getElementById('detail-desc').textContent = product.desc;
+                document.getElementById('detail-price').textContent = (spec ? spec.price : product.price).toFixed(1);
+                document.getElementById('detail-unit').textContent = '/' + (spec ? spec.unit : product.unit);
+            }
+
+            // 填充详情图
+            const detailImagesContainer = document.getElementById('detail-images');
+            // detailImagesContainer.innerHTML = product.detailImgs.map((img, index) => `
+            //     <img src="${img}" alt="详情图${index + 1}" class="w-full rounded-lg">
+            // `).join('');
+
+            document.getElementById('spec-desc').textContent = product.specs[0].desc;
+			detailImagesContainer.innerHTML = product.specs[0].img.map((img, index) => `
+                 <img src="${img}" alt="详情图${index + 1}" class="w-full rounded-lg">
+            `).join('');
+
+            // 填充规格选择
+            const specsContainer = document.getElementById('specs-container');
+            if (product.specs && product.specs.length > 0) {
+                specsContainer.innerHTML = product.specs.map((spec, index) => `
+                    <button onclick="selectSpec(${index})" class="px-4 py-2 border-2 ${index === 0 ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-700 hover:border-emerald-300'} rounded-lg text-sm font-medium transition-colors">
+                        ${spec.name}
+                    </button>
+                `).join('');
+            } else {
+                specsContainer.innerHTML = `
+                    <button class="px-4 py-2 border-2 border-emerald-500 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium">
+                        默认规格
+                    </button>
+                `;
+            }
+
+            // 更新商品详情
+            updateProductDetails(state.currentSpec);
+
+            // 更新购物车角标
+            updateDetailCartBadge();
+
+            // 显示详情页
+            productDetail.classList.remove('translate-x-full');
+            productDetail.classList.add('detail-slide-in');
+        };
+
+        // 选择规格
+        window.selectSpec = function(index) {
+            if (!state.currentProduct || !state.currentProduct.specs) return;
+
+            const spec = state.currentProduct.specs[index];
+            if (!spec) return;
+
+            state.currentSpec = spec;
+
+            // 更新规格按钮样式
+            const specsContainer = document.getElementById('specs-container');
+            const buttons = specsContainer.querySelectorAll('button');
+            buttons.forEach((btn, i) => {
+                if (i === index) {
+                    btn.classList.remove('border-gray-200', 'text-gray-700', 'hover:border-emerald-300');
+                    btn.classList.add('border-emerald-500', 'bg-emerald-50', 'text-emerald-700');
+                } else {
+                    btn.classList.remove('border-emerald-500', 'bg-emerald-50', 'text-emerald-700');
+                    btn.classList.add('border-gray-200', 'text-gray-700', 'hover:border-emerald-300');
+                }
+            });
+            
+            // 更新商品详情
+            document.getElementById('detail-image').src = spec.img[0]; 
+            //更新规格详情
+            document.getElementById('spec-desc').textContent = spec.desc;
+             // 填充详情图  
+            const detailImagesContainer = document.getElementById('detail-images');
+			detailImagesContainer.innerHTML = spec.img.map((img, index) => `
+                 <img src="${img}" alt="详情图${index + 1}" class="w-full rounded-lg">
+            `).join('');
+            document.getElementById('detail-price').textContent = spec.price.toFixed(1);
+            document.getElementById('detail-unit').textContent = '/' + spec.unit;
+        };
+
+        // 关闭商品详情页
+        window.closeDetail = function() {
+            productDetail.classList.add('translate-x-full');
+            productDetail.classList.remove('detail-slide-in');
+            state.currentProduct = null;
+        };
+
+        // 从详情页加入购物车
+        window.addToCartFromDetail = function() {
+            if (!state.currentProduct) return;
+
+            const product = state.currentProduct;
+            const spec = state.currentSpec;
+            
+            // 使用规格信息（如果有）
+            const cartItem = {
+                id: product.id,
+                name: product.name,
+                price: spec ? spec.price : product.price,
+                unit: spec ? spec.unit : product.unit,
+                img: spec ? spec.img : product.img,
+                quantity: 1,
+                specName: spec ? spec.name : '默认规格'
+            };
+
+            // 检查购物车是否已有该商品及规格
+            const existingItem = state.cart.find(item => 
+                item.id === cartItem.id && item.specName === cartItem.specName
+            );
+            if (existingItem) {
+                existingItem.quantity++;
+            } else {
+                state.cart.push(cartItem);
+            }
+
+            // 保存到本地存储
+            localStorage.setItem('cart', JSON.stringify(state.cart));
+
+            // 更新购物车角标
+            updateDetailCartBadge();
+
+            // 显示添加成功提示
+            showToast('已添加到购物车', 'success');
+        };
+
+        // 更新详情页购物车角标
+        function updateDetailCartBadge() {
+            const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+            if (totalCount > 0) {
+                detailCartBadge.textContent = totalCount;
+                detailCartBadge.classList.remove('hidden');
+            } else {
+                detailCartBadge.classList.add('hidden');
+            }
+        }
+
+        // 更新购物车
+        window.updateCart = function(productId, change) {
+            // 查找商品
+            let product = null;
+            for (const catId in productsData) {
+                const found = productsData[catId].find(p => p.id === productId);
+                if (found) {
+                    product = found;
+                    break;
+                }
+            }
+
+            if (!product) return;
+
+            // 使用默认规格（如果有）
+            const spec = product.specs && product.specs.length > 0 ? product.specs[0] : null;
+            
+            // 创建购物车项
+            const cartItem = {
+                id: product.id,
+                name: product.name,
+                price: spec ? spec.price : product.price,
+                unit: spec ? spec.unit : product.unit,
+                img: spec ? spec.img : product.img,
+                quantity: Math.abs(change),
+                specName: spec ? spec.name : '默认规格'
+            };
+
+            // 检查购物车是否已有该商品及规格
+            const existingItem = state.cart.find(item => 
+                item.id === cartItem.id && item.specName === cartItem.specName
+            );
+
+            if (change > 0) {
+                // 添加商品
+                if (existingItem) {
+                    existingItem.quantity++;
+                } else {
+                    state.cart.push(cartItem);
+                }
+            } else if (change < 0) {
+                // 减少商品
+                if (existingItem) {
+                    existingItem.quantity--;
+                    if (existingItem.quantity <= 0) {
+                        state.cart = state.cart.filter(item => 
+                            !(item.id === cartItem.id && item.specName === cartItem.specName)
+                        );
+                    }
+                }
+            }
+
+            // 保存到本地存储
+            localStorage.setItem('cart', JSON.stringify(state.cart));
+
+            // 重新渲染当前视图
+            if (state.isSearching) {
+                performSearch(state.searchQuery);
+            } else {
+                renderProducts(state.currentCategory);
+            }
+            updateCartSummary();
+            
+            // 如果在详情页，更新详情页的购物车角标
+            if (state.currentProduct) {
+                updateDetailCartBadge();
+            }
+        };
+
+        // 更新购物车底部栏
+        function updateCartSummary() {
+            const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+            const totalPrice = state.cart.reduce((sum, item) => {
+                return sum + (item.price * item.quantity);
+            }, 0);
+
+            // 更新徽章
+            cartBadgeEl.innerText = totalCount;
+            if (totalCount > 0) {
+                cartBadgeEl.classList.remove('scale-0');
+                cartBadgeEl.classList.add('scale-100', 'animate-pop');
+                setTimeout(() => cartBadgeEl.classList.remove('animate-pop'), 200);
+                checkoutBtn.disabled = false;
+                checkoutBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                cartBadgeEl.classList.remove('scale-100');
+                cartBadgeEl.classList.add('scale-0');
+                checkoutBtn.disabled = true;
+                checkoutBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            // 更新总价
+            totalPriceEl.innerText = totalPrice.toFixed(2);
+        }
+
+        // 启动应用
+        init();
+
+    </script>
+</body>
+</html>
